@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+:root {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(20, 14.3%, 4.1%);
+  --muted: hsl(60, 4.8%, 95.9%);
+  --muted-foreground: hsl(25, 5.3%, 44.7%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(20, 14.3%, 4.1%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(20, 14.3%, 4.1%);
+  --border: hsl(20, 5.9%, 90%);
+  --input: hsl(20, 5.9%, 90%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(211, 100%, 99%);
+  --secondary: hsl(60, 4.8%, 95.9%);
+  --secondary-foreground: hsl(24, 9.8%, 10%);
+  --accent: hsl(60, 4.8%, 95.9%);
+  --accent-foreground: hsl(24, 9.8%, 10%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(60, 9.1%, 97.8%);
+  --ring: hsl(20, 14.3%, 4.1%);
+  --radius: 0.5rem;
+  
+  /* Custom Netmon colors */
+  --netmon-blue: hsl(213, 65%, 33%);
+  --netmon-light: hsl(213, 100%, 96%);
+  --sidebar-bg: hsl(210, 20%, 98%);
+  --content-bg: hsl(0, 0%, 100%);
+}
+
+.dark {
+  --background: hsl(240, 10%, 3.9%);
+  --foreground: hsl(0, 0%, 98%);
+  --muted: hsl(240, 3.7%, 15.9%);
+  --muted-foreground: hsl(240, 5%, 64.9%);
+  --popover: hsl(240, 10%, 3.9%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --card: hsl(240, 10%, 3.9%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --border: hsl(240, 3.7%, 15.9%);
+  --input: hsl(240, 3.7%, 15.9%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(211, 100%, 99%);
+  --secondary: hsl(240, 3.7%, 15.9%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --accent: hsl(240, 3.7%, 15.9%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 62.8%, 30.6%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --ring: hsl(240, 4.9%, 83.9%);
+  --radius: 0.5rem;
+  
+  /* Custom Netmon colors for dark mode */
+  --netmon-blue: hsl(213, 65%, 45%);
+  --netmon-light: hsl(213, 20%, 15%);
+  --sidebar-bg: hsl(240, 10%, 6%);
+  --content-bg: hsl(240, 10%, 3.9%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+body, .sidebar, .header {
+  font-family: 'Segoe UI', 'Comic Sans MS', Arial, sans-serif !important;
+}
+
+.sidebar, .sidebar * {
+  font-size: 16px !important;
+}
+
+.header, .header * {
+  font-size: 17px !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.card {
+  border-radius: 1rem;
+  box-shadow: 0 2px 8px 0 rgba(0,0,0,0.06);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.button {
+  border-radius: 0.5rem;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+@layer utilities {
+  .netmon-blue {
+    color: var(--netmon-blue);
+  }
+  
+  .bg-netmon-blue {
+    background-color: var(--netmon-blue);
+  }
+  
+  .bg-netmon-light {
+    background-color: var(--netmon-light);
+  }
+  
+  .bg-sidebar {
+    background-color: var(--sidebar-bg);
+  }
+  
+  .bg-content {
+    background-color: var(--content-bg);
+  }
+  
+  .border-netmon-blue {
+    border-color: var(--netmon-blue);
+  }
+  
+  .hover\:bg-netmon-blue:hover {
+    background-color: var(--netmon-blue);
+  }
+  
+  .hover\:bg-netmon-light:hover {
+    background-color: var(--netmon-light);
+  }
+}
