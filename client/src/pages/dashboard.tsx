@@ -2,7 +2,7 @@ import { useState } from "react";
 import Header, { MainTab } from "@/components/header";
 import Sidebar from "@/components/sidebar";
 import ContentArea from "@/components/content-area";
-import { Line } from 'react-chartjs-2';
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -58,7 +58,8 @@ export type ContentType =
   | "toplam-pil-akimi"
   | "konfigurasyon"
   | "dogrultucular"
-  | "solarlar";
+  | "solarlar"
+  | "alarmlar";
 
 export default function Dashboard() {
   const [activeMainTab, setActiveMainTab] = useState<MainTab>("ana-sayfa");
@@ -104,6 +105,9 @@ export default function Dashboard() {
       case "konfigurasyon":
         setCurrentContent("konfigurasyon");
         setExpandedMenus(["toplayici-aygit"]);
+        break;
+      case "alarmlar":
+        setCurrentContent("alarmlar");
         break;
       default:
         setCurrentContent("dashboard");

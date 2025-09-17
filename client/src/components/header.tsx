@@ -3,14 +3,14 @@ import { useLanguage } from "@/hooks/use-language";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertTriangle, AlertCircle, Info, LogOut, ChevronDown, X, Globe, UserCircle } from "lucide-react";
-import { getAvailableLanguages, Language } from "@/../../shared/i18n";
+import { AlertTriangle, AlertCircle, Info, LogOut, ChevronDown, X, Globe } from "lucide-react";
+import { getAvailableLanguages } from "@/../../shared/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import netmonLogo from "@assets/Kwc_Netmon_Logo_Siyah_1749623422136.png";
+// import netmonLogo from "@assets/Kwc_Netmon_Logo_Siyah_1749623422136.png";
 import React from "react";
 
-export type MainTab = "ana-sayfa" | "izleme" | "sorgu" | "sistem-ayarlari" | "bakim" | "konfigurasyon";
+export type MainTab = "ana-sayfa" | "izleme" | "sorgu" | "sistem-ayarlari" | "bakim" | "konfigurasyon" | "alarmlar";
 
 interface HeaderProps {
   activeTab: MainTab;
@@ -21,6 +21,7 @@ export default function Header({ activeTab, onTabChange }: HeaderProps) {
   const { user, logout, isLoggingOut } = useAuth();
   const { currentLanguage, setLanguage, t } = useLanguage();
   const [showAlarms, setShowAlarms] = useState(false);
+  // const [showAlarmGuide, setShowAlarmGuide] = useState(false);
 
   // Fetch real alarm data from hardware API
   const { data: alarmData = [], isLoading: alarmsLoading } = useQuery({
@@ -39,7 +40,8 @@ export default function Header({ activeTab, onTabChange }: HeaderProps) {
   const mainTabs = [
     { id: "sistem-ayarlari" as MainTab, label: t.systemSettings },
     { id: "bakim" as MainTab, label: t.maintenance },
-    { id: "konfigurasyon" as MainTab, label: t.configuration }
+    { id: "konfigurasyon" as MainTab, label: t.configuration },
+    { id: "alarmlar" as MainTab, label: t.alarms }
   ];
 
   const availableLanguages = getAvailableLanguages();
@@ -51,15 +53,32 @@ export default function Header({ activeTab, onTabChange }: HeaderProps) {
     return () => clearInterval(interval);
   }, []);
 
+  // Hardware health indicator
+  const [hwHealth, setHwHealth] = React.useState<{mode: string; connected: boolean} | null>(null);
+  React.useEffect(() => {
+    let mounted = true;
+    const fetchHealth = async () => {
+      try {
+        const res = await fetch('/api/hardware/health');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted) setHwHealth({ mode: data.mode, connected: !!data.connected });
+      } catch {}
+    };
+    fetchHealth();
+    const id = setInterval(fetchHealth, 5000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
   return (
     <header className="bg-netmon-blue text-white shadow-lg">
       {/* Top section with logo and user info */}
       <div className="flex items-center justify-between px-6 py-3">
         <div className="flex items-center space-x-4">
-          <img 
-            src={netmonLogo} 
-            alt="Netmon" 
-            className="h-12 w-auto filter brightness-0 invert" 
+          <img
+            src="/assets/Kwc_Netmon_Logo_Siyah_1749623422136.png"
+            alt="Netmon Logo"
+            className="h-12 w-auto rounded bg-white/10 p-1"
           />
           {/* Sistem Saati */}
           <span className="text-lg font-mono font-bold bg-white/10 px-3 py-1 rounded">
@@ -69,6 +88,11 @@ export default function Header({ activeTab, onTabChange }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-4">
+          {hwHealth && (
+            <div className={`px-3 py-1 rounded text-xs font-medium ${hwHealth.connected ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+              {currentLanguage === 'tr' ? 'Donanım' : 'Hardware'}: {hwHealth.mode === 'real' ? (currentLanguage === 'tr' ? 'Gerçek' : 'Real') : 'Sim'} {hwHealth.connected ? '•' : '○'}
+            </div>
+          )}
           {/* Alarm Indicators */}
           <div className="flex items-center space-x-2">
             <Dialog open={showAlarms} onOpenChange={setShowAlarms}>
@@ -229,7 +253,7 @@ export default function Header({ activeTab, onTabChange }: HeaderProps) {
                 <ellipse cx="12" cy="18" rx="6" ry="3" fill="#fff"/>
               </svg>
               <span className="font-medium text-white text-sm">
-                {user?.username || user?.name || "Kullanıcı"}
+                {user?.username || user?.name || (currentLanguage === 'tr' ? 'Kullanıcı' : 'User')}
               </span>
             </div>
             <Button
@@ -249,11 +273,11 @@ export default function Header({ activeTab, onTabChange }: HeaderProps) {
           {mainTabs.map(tab => (
             <li key={tab.id} className="flex-1">
               <button
-                className={`w-full py-3 text-base font-medium transition-colors
-                  ${activeTab === tab.id
+                className={`w-full py-3 text-base font-medium transition-colors ${
+                  activeTab === tab.id
                     ? 'bg-[#2046c8] text-white shadow font-bold'
-                    : 'bg-transparent text-blue-100 hover:bg-[#2046c8] hover:text-white'}
-                `}
+                    : 'bg-transparent text-blue-100 hover:bg-[#2046c8] hover:text-white'
+                }`}
                 onClick={() => onTabChange(tab.id)}
               >
                 {tab.label}

@@ -1,46 +1,44 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { loginSchema } from "@shared/schema";
-import { nanoid } from "nanoid";
+import { rateLimit, validateRequest, validateParams } from "./middleware/validation";
 import { hardwareBridge } from "./hardware-bridge";
 import { setupWebSocket } from "./websocket";
+import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Authentication middleware
-  app.use(async (req, res, next) => {
-    await storage.deleteExpiredSessions();
-    next();
-  });
+  // Simple authentication without database
+  const validCredentials = {
+    username: "netmon",
+    password: "netmon"
+  };
 
-  // Login endpoint
-  app.post("/api/auth/login", async (req, res) => {
+  // Login endpoint (with rate limit and validation)
+  app.post("/api/auth/login", rateLimit(10, 60_000), async (req, res) => {
     try {
-      const { username, password } = loginSchema.parse(req.body);
+      const { username, password } = req.body;
       
-      const user = await storage.getUserByUsername(username);
-      if (!user || user.password !== password) {
-        return res.status(401).json({ message: "Geçersiz kullanıcı adı veya şifre" });
+      if (username === validCredentials.username && password === validCredentials.password) {
+        const sessionId = "sess-" + Date.now();
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        // Persist session for WS + HTTP
+        await storage.createSession(1, sessionId, expiresAt);
+        
+        res.cookie("sessionId", sessionId, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "strict",
+          expires: expiresAt // 24 hours
+        });
+
+        res.json({
+          user: {
+            id: 1,
+            username: username
+          }
+        });
+      } else {
+        res.status(401).json({ message: "Geçersiz kullanıcı adı veya şifre" });
       }
-
-      const sessionId = nanoid();
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-      
-      await storage.createSession(user.id, sessionId, expiresAt);
-      
-      res.cookie("sessionId", sessionId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        expires: expiresAt
-      });
-
-      res.json({
-        user: {
-          id: user.id,
-          username: user.username
-        }
-      });
     } catch (error) {
       res.status(400).json({ message: "Geçersiz istek" });
     }
@@ -48,62 +46,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Logout endpoint
   app.post("/api/auth/logout", async (req, res) => {
-    const sessionId = req.cookies?.sessionId;
-    if (sessionId) {
-      await storage.deleteSession(sessionId);
-    }
     res.clearCookie("sessionId");
     res.json({ message: "Çıkış yapıldı" });
   });
 
   // Get current user endpoint
   app.get("/api/auth/me", async (req, res) => {
-    const sessionId = req.cookies?.sessionId;
-    if (!sessionId) {
-      return res.status(401).json({ message: "Oturum bulunamadı" });
-    }
-
-    const session = await storage.getSession(sessionId);
-    if (!session) {
-      res.clearCookie("sessionId");
-      return res.status(401).json({ message: "Geçersiz oturum" });
-    }
-
-    const user = await storage.getUser(session.userId);
-    if (!user) {
-      await storage.deleteSession(sessionId);
-      res.clearCookie("sessionId");
-      return res.status(401).json({ message: "Kullanıcı bulunamadı" });
-    }
-
-    res.json({
-      user: {
-        id: user.id,
-        username: user.username
+    try {
+      const sessionId = req.cookies?.sessionId;
+      if (!sessionId) {
+        return res.status(401).json({ message: "Oturum bulunamadı" });
       }
+
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(401).json({ message: "Oturum bulunamadı" });
+      }
+
+      const user = await storage.getUser(session.userId);
+      if (!user) {
+        return res.status(401).json({ message: "Kullanıcı bulunamadı" });
+      }
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username
+        }
+      });
+    } catch {
+      res.status(500).json({ message: "Sunucu hatası" });
+    }
+  });
+
+  // Health check
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      status: 'ok',
+      time: new Date().toISOString()
     });
   });
 
+  // Liveness & Readiness
+  app.get("/api/live", (_req, res) => res.json({ live: true }));
+  app.get("/api/ready", (_req, res) => {
+    try {
+      const connected = hardwareBridge.isRealHardwareConnected();
+      const ready = process.env.HARDWARE_ENABLED === 'true' ? connected : true;
+      res.status(ready ? 200 : 503).json({ ready, hardwareConnected: connected });
+    } catch {
+      res.status(503).json({ ready: false });
+    }
+  });
+
+  // Hardware health (mode + connection status)
+  app.get("/api/hardware/health", (_req, res) => {
+    try {
+      const connected = hardwareBridge.isRealHardwareConnected();
+      const mode = connected ? "real" : "sim"; // if not connected assume simulation unless env says otherwise
+      res.json({
+        mode,
+        connected,
+        tcpHost: process.env.HARDWARE_TCP_HOST || '127.0.0.1',
+        tcpPort: Number(process.env.HARDWARE_TCP_PORT || 9000),
+        lastUpdateTs: (hardwareBridge as any).getLastUpdateTs ? (hardwareBridge as any).getLastUpdateTs() : 0
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Hardware health check failed" });
+    }
+  });
+
   // Hardware API endpoints
-  // Authentication middleware for hardware routes
+  // Rate limit all hardware routes
+  app.use('/api/hardware', rateLimit(60, 60_000));
+  // Simple authentication middleware for hardware routes
   const requireAuth = async (req: any, res: any, next: any) => {
-    const sessionId = req.cookies?.sessionId;
-    if (!sessionId) {
-      return res.status(401).json({ message: "Oturum bulunamadı" });
-    }
+    try {
+      const sessionId = req.cookies?.sessionId;
+      if (!sessionId) {
+        return res.status(401).json({ message: "Oturum bulunamadı" });
+      }
 
-    const session = await storage.getSession(sessionId);
-    if (!session || session.expiresAt < new Date()) {
-      return res.status(401).json({ message: "Geçersiz oturum" });
-    }
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(401).json({ message: "Oturum bulunamadı" });
+      }
 
-    const user = await storage.getUser(session.userId);
-    if (!user) {
-      return res.status(401).json({ message: "Kullanıcı bulunamadı" });
-    }
+      const user = await storage.getUser(session.userId);
+      if (!user) {
+        return res.status(401).json({ message: "Kullanıcı bulunamadı" });
+      }
 
-    req.user = user;
-    next();
+      req.user = { id: user.id, username: user.username };
+      next();
+    } catch {
+      res.status(500).json({ message: "Sunucu hatası" });
+    }
   };
 
   // Power module endpoints
@@ -120,7 +158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const moduleId = parseInt(req.params.id);
       const { enabled } = req.body;
-      const result = await hardwareBridge.setBowerModuleState(moduleId, enabled);
+      const result = await hardwareBridge.setPowerModuleState(moduleId, enabled);
       res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Güç modülü durumu değiştirilemedi" });
@@ -216,6 +254,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Çalışma modu değiştirilemedi" });
+    }
+  });
+
+  // Konfigürasyon endpointleri
+  app.get("/api/config", requireAuth, async (req, res) => {
+    try {
+      const config = await storage.getConfig();
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ message: "Konfigürasyon verisi alınamadı" });
+    }
+  });
+
+  app.post("/api/config", requireAuth, async (req, res) => {
+    try {
+      const config = req.body;
+      await storage.setConfig(config);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Konfigürasyon verisi kaydedilemedi" });
+    }
+  });
+
+  // Admin: switch hardware mode (real/sim) - simple protection via requireAuth
+  // Simple admin guard: only allow default demo user for now; expand to roles later
+  const requireAdmin = async (req: any, res: any, next: any) => {
+    const sessionId = req.cookies?.sessionId;
+    if (!sessionId) return res.status(401).json({ message: "Oturum bulunamadı" });
+    // In-memory demo: user id 1 is admin
+    req.user?.id === 1 ? next() : res.status(403).json({ message: "Yetki yok" });
+  };
+
+  app.post("/api/admin/hardware-mode", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { mode } = req.body as { mode?: string };
+      if (mode === "real") {
+        hardwareBridge.enableRealHardware();
+      } else if (mode === "sim") {
+        hardwareBridge.enableSimulationMode();
+      } else {
+        return res.status(400).json({ message: "Geçersiz mod. 'real' veya 'sim' olmalı" });
+      }
+      res.json({ success: true, mode });
+    } catch (error) {
+      res.status(500).json({ message: "Donanım modu değiştirilemedi" });
     }
   });
 

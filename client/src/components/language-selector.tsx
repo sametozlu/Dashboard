@@ -10,14 +10,10 @@ import {
 import { Globe } from "lucide-react";
 
 interface LanguageSelectorProps {
-  variant?: "default" | "outline" | "ghost";
-  size?: "default" | "sm" | "lg";
   showText?: boolean;
 }
 
 export function LanguageSelector({ 
-  variant = "outline", 
-  size = "default", 
   showText = true 
 }: LanguageSelectorProps) {
   const { currentLanguage, setLanguage } = useLanguage();
@@ -30,7 +26,7 @@ export function LanguageSelector({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant={variant} size={size} className="gap-2">
+        <Button className="gap-2">
           <Globe className="w-4 h-4" />
           {showText && <span>{currentLangName}</span>}
         </Button>

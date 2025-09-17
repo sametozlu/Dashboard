@@ -98,6 +98,8 @@ Tarayıcıda: `http://localhost:5000`
 - Kullanıcı: `netmon`
 - Şifre: `netmon`
 
+Not: Varsayılan kullanıcı parolası hash'lenmiştir; demo giriş bilgileri yukarıdaki gibidir.
+
 ## Hardware API
 
 ### Güç Modülleri
@@ -187,13 +189,47 @@ hw_status_t hw_get_power_modules(power_module_t* modules, uint8_t* count) {
 }
 ```
 
+## Ölçüm Formülleri ve Uygulama Noktaları
+
+Bu proje, donanım ölçümlerini aşağıdaki formüllerle hesaplar. İlgili implementasyon dosya/satırları belirtilmiştir.
+
+- DC Gerilim (Voltage Divider)
+  - Formül: \(V_{adc} = ADC/4095 \times V_{ref}\), \(V_{in} = V_{adc} \times (R1+R2)/R2\)
+  - Uygulama: `hardware/sensor_library.c` → `voltage_divider_read_voltage_mv`
+  - Kalibrasyon: `voltage_divider_calibrate`
+
+- DC Akım (ACS712)
+  - Formül: \(I = (V_{adc} - V_{ref}/2)/Sensitivity\) (Sensitivity: 185/100/66 mV/A sensör modeline göre)
+  - Uygulama: `hardware/sensor_library.c` → `acs712_read_current_ma`
+  - Kalibrasyon: `acs712_calibrate`
+
+- Sıcaklık (LM35)
+  - Formül: \(T(°C) = V/0.01\)
+  - Uygulama: `hardware/sensor_library.c` → `lm35_read_temperature`
+  - Kalibrasyon: `lm35_calibrate`
+
+- DC Güç
+  - Formül: \(P_{dc} = V \times I\)
+  - Uygulama: `hardware/power_monitor.c` → `read_power_module_data` (mW olarak hesaplanır)
+
+- Limit/Alarm Kontrolleri
+  - Gerilim/Akım/Sıcaklık/Güç limitleri ve hata bayrakları
+  - Uygulama: `hardware/power_monitor.c` → `check_voltage_faults`, `check_current_faults`, `check_temperature_faults`, `check_power_faults`
+
+Notlar:
+- ADC referansı 3.3V ve 12-bit varsayılmıştır (gerektiğinde `ADC_REFERENCE_VOLTAGE_MV` ile değiştirin).
+- Ölçümler için offset/scale kalibrasyon alanları mevcuttur (sensor library fonksiyonları).
+- AC RMS/frekans/PF ölçümleri donanım geldiğinde eklenmek üzere ayrılmıştır (placeholder).
+
 ## Deployment
 
 ### Production Build
 ```bash
 npm run build
-npm run start
+npm run start:prod
 ```
+### NGINX + SSL
+`docs/NGINX_SSL_EXAMPLE.conf` dosyasını örnek olarak kullanın. Let's Encrypt ile sertifika alıp 5000'e reverse proxy yapar.
 
 ### Docker Deployment
 ```dockerfile

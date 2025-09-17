@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import path from 'path';
 import net from 'net'; // TCP client için ekleme
+import { STM32Bridge } from './stm32-bridge';
 
 export interface PowerModule {
   moduleId: number;
@@ -68,6 +69,21 @@ class HardwareBridge extends EventEmitter {
   private realHardwareConnected = false; // Gerçek donanım durumu
   private tcpClient: net.Socket | null = null; // TCP client referansı
   private tcpBuffer: string = '';
+  private hasLoggedTcpError: boolean = false;
+  private stm32Bridge: STM32Bridge | null = null; // STM32 bridge referansı
+  private reconnectAttempts = 0;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private lastUpdateTs: number = 0;
+  
+  // Configurable via environment vars
+  private readonly tcpHost: string = process.env.HARDWARE_TCP_HOST || '127.0.0.1';
+  private readonly tcpPort: number = Number(process.env.HARDWARE_TCP_PORT || 9000);
+  private readonly hardwareEnabled: boolean = (() => {
+    if (process.env.HARDWARE_ENABLED === 'true') return true;
+    if (process.env.HARDWARE_ENABLED === 'false') return false;
+    // Default: production'da true, development'ta false
+    return process.env.NODE_ENV === 'production';
+  })();
 
   constructor() {
     super();
@@ -76,13 +92,78 @@ class HardwareBridge extends EventEmitter {
 
   private async initializeHardware(): Promise<void> {
     try {
-      // Donanım TCP sunucusuna bağlan
-      this.connectToHardwareTCP();
+      if (this.hardwareEnabled) {
+        // STM32 bridge'i başlat
+        this.initializeSTM32Bridge();
+        // Donanım TCP sunucusuna bağlan
+        this.connectToHardwareTCP();
+      } else {
+        // Donanım dev ortamında devre dışı: simülasyonda başla
+        this.isSimulationMode = true;
+      }
       this.isInitialized = true;
       this.emit('initialized');
       // Simülasyon polling'i kaldırıldı, gerçek donanımda TCP'den veri beklenir
     } catch (error) {
-      console.error('Failed to initialize hardware:', error);
+      if (!this.hasLoggedTcpError) {
+        console.error('Failed to initialize hardware:', error);
+        this.hasLoggedTcpError = true;
+      }
+      this.emit('error', error);
+    }
+  }
+
+  /**
+   * STM32 bridge'i başlatır ve event listener'ları ayarlar
+   */
+  private initializeSTM32Bridge(): void {
+    try {
+      this.stm32Bridge = new STM32Bridge();
+      
+      // Event listener'ları ayarla
+      this.stm32Bridge.on('powerModuleData', (data) => {
+        this.emit('powerModuleData', data);
+      });
+      
+      this.stm32Bridge.on('batteryData', (data) => {
+        this.emit('batteryData', data);
+      });
+      
+      this.stm32Bridge.on('acInputData', (data) => {
+        this.emit('acInputData', data);
+      });
+      
+      this.stm32Bridge.on('dcOutputData', (data) => {
+        this.emit('dcOutputData', data);
+      });
+      
+      this.stm32Bridge.on('alarmData', (data) => {
+        this.emit('alarmData', data);
+      });
+      
+      this.stm32Bridge.on('systemStatusData', (data) => {
+        this.emit('systemStatusData', data);
+      });
+      
+      this.stm32Bridge.on('connected', () => {
+        console.log('STM32 Bridge: Connected to hardware');
+        this.realHardwareConnected = true;
+        this.isSimulationMode = false;
+      });
+      
+      this.stm32Bridge.on('disconnected', () => {
+        console.log('STM32 Bridge: Disconnected from hardware');
+        this.realHardwareConnected = false;
+        this.isSimulationMode = true;
+      });
+      
+      this.stm32Bridge.on('error', (error) => {
+        console.error('STM32 Bridge error:', error);
+        this.emit('error', error);
+      });
+      
+    } catch (error) {
+      console.error('Failed to initialize STM32 bridge:', error);
       this.emit('error', error);
     }
   }
@@ -92,11 +173,21 @@ class HardwareBridge extends EventEmitter {
    * Alınan veri EventEmitter ile 'hardwareData' event'i olarak yayınlanır.
    */
   private connectToHardwareTCP() {
+    // Temiz önceki bağlantı/timer
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.tcpClient) {
+      try { this.tcpClient.removeAllListeners(); this.tcpClient.destroy(); } catch {}
+    }
+
     this.tcpClient = new net.Socket();
-    this.tcpClient.connect(9000, '127.0.0.1', () => {
+    this.tcpClient.connect(this.tcpPort, this.tcpHost, () => {
       console.log('C donanım sunucusuna TCP ile bağlanıldı.');
       this.realHardwareConnected = true;
       this.isSimulationMode = false;
+      this.reconnectAttempts = 0;
     });
     this.tcpClient.on('data', (data: Buffer) => {
       // Gelen veriyi buffer'da biriktir, satır satır işle
@@ -107,19 +198,33 @@ class HardwareBridge extends EventEmitter {
         if (line.trim()) {
           // Donanımdan gelen her satırı event olarak yayınla
           this.emit('hardwareData', line.trim());
+          this.lastUpdateTs = Date.now();
         }
       }
     });
-    this.tcpClient.on('close', () => {
-      console.log('C donanım sunucusu bağlantısı kapandı.');
+    const scheduleReconnect = (reason: string) => {
       this.realHardwareConnected = false;
       this.isSimulationMode = true;
-    });
+      const base = 1000;
+      const max = 30000;
+      this.reconnectAttempts = Math.min(this.reconnectAttempts + 1, 30);
+      const delay = Math.min(base * Math.pow(2, this.reconnectAttempts - 1), max);
+      console.log(`TCP bağlantı koptu (${reason}). ${Math.floor(delay/1000)}s sonra tekrar denenecek...`);
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.connectToHardwareTCP(), delay);
+    };
+    this.tcpClient.on('close', () => scheduleReconnect('close'));
     this.tcpClient.on('error', (err) => {
-      console.error('TCP client hata:', err);
-      this.realHardwareConnected = false;
-      this.isSimulationMode = true;
+      if (!this.hasLoggedTcpError) {
+        console.error('TCP client hata:', err);
+        this.hasLoggedTcpError = true;
+      }
+      scheduleReconnect('error');
     });
+  }
+
+  public getLastUpdateTs(): number {
+    return this.lastUpdateTs;
   }
 
   private async executeCommand(command: string): Promise<any> {
@@ -422,79 +527,7 @@ class HardwareBridge extends EventEmitter {
     };
   }
 
-  // Public API methods
-  async getPowerModules(): Promise<PowerModule[]> {
-    const command = JSON.stringify({ action: 'getPowerModules' });
-    return await this.executeCommand(command);
-  }
 
-  async setBowerModuleState(moduleId: number, enabled: boolean): Promise<any> {
-    const command = JSON.stringify({ 
-      action: 'setPowerModuleState', 
-      moduleId, 
-      enabled 
-    });
-    return await this.executeCommand(command);
-  }
-
-  async getBatteryInfo(): Promise<BatteryInfo[]> {
-    const command = JSON.stringify({ action: 'getBatteryInfo' });
-    return await this.executeCommand(command);
-  }
-
-  async startBatteryTest(batteryId: number, testType: number): Promise<any> {
-    const command = JSON.stringify({ 
-      action: 'startBatteryTest', 
-      batteryId, 
-      testType 
-    });
-    return await this.executeCommand(command);
-  }
-
-  async getACInputs(): Promise<ACPhase[]> {
-    const command = JSON.stringify({ action: 'getACInputs' });
-    return await this.executeCommand(command);
-  }
-
-  async getDCOutputs(): Promise<DCCircuit[]> {
-    const command = JSON.stringify({ action: 'getDCOutputs' });
-    return await this.executeCommand(command);
-  }
-
-  async setDCCircuitState(circuitId: number, enabled: boolean): Promise<any> {
-    const command = JSON.stringify({ 
-      action: 'setDCCircuitState', 
-      circuitId, 
-      enabled 
-    });
-    return await this.executeCommand(command);
-  }
-
-  async getActiveAlarms(): Promise<AlarmData[]> {
-    const command = JSON.stringify({ action: 'getActiveAlarms' });
-    return await this.executeCommand(command);
-  }
-
-  async acknowledgeAlarm(alarmId: number): Promise<any> {
-    const command = JSON.stringify({ 
-      action: 'acknowledgeAlarm', 
-      alarmId 
-    });
-    return await this.executeCommand(command);
-  }
-
-  async getSystemStatus(): Promise<SystemStatus> {
-    const command = JSON.stringify({ action: 'getSystemStatus' });
-    return await this.executeCommand(command);
-  }
-
-  async setOperationMode(mode: number): Promise<any> {
-    const command = JSON.stringify({ 
-      action: 'setOperationMode', 
-      mode 
-    });
-    return await this.executeCommand(command);
-  }
 
   // Gerçek donanım entegrasyonu metodları
   private async getRealPowerModulesData(): Promise<PowerModule[]> {
@@ -558,11 +591,149 @@ class HardwareBridge extends EventEmitter {
     console.log('Simulation mode enabled');
   }
 
+  // STM32 bridge'e komut gönder
+  public sendSTM32Command(commandId: number, targetId: number, action: number, parameter: number): boolean {
+    if (this.stm32Bridge && this.stm32Bridge.isConnectedToHardware()) {
+      return this.stm32Bridge.sendCommand(commandId, targetId, action, parameter);
+    }
+    return false;
+  }
+
+  // STM32 bridge bağlantı durumu
+  public isSTM32Connected(): boolean {
+    return this.stm32Bridge ? this.stm32Bridge.isConnectedToHardware() : false;
+  }
+
+  // API fonksiyonları
+  async getPowerModules(): Promise<PowerModule[]> {
+    if (this.isSimulationMode) {
+      return this.simulatePowerModules();
+    } else {
+      return this.getRealPowerModulesData();
+    }
+  }
+
+  async setPowerModuleState(moduleId: number, enabled: boolean): Promise<{ success: boolean; message: string }> {
+    try {
+      if (this.isSimulationMode) {
+        return { success: true, message: `Power module ${moduleId} ${enabled ? 'enabled' : 'disabled'} (simulation)` };
+      } else {
+        // Gerçek donanım komutu gönder
+        const success = this.sendSTM32Command(1, moduleId, enabled ? 2 : 3, 0);
+        return { success, message: success ? `Power module ${moduleId} ${enabled ? 'enabled' : 'disabled'}` : 'Command failed' };
+      }
+    } catch (error) {
+      return { success: false, message: 'Error setting power module state' };
+    }
+  }
+
+  async getBatteryInfo(): Promise<BatteryInfo[]> {
+    if (this.isSimulationMode) {
+      return this.simulateBatteryInfo();
+    } else {
+      return this.getRealBatteryInfoData();
+    }
+  }
+
+  async startBatteryTest(batteryId: number, testType: number): Promise<{ success: boolean; message: string }> {
+    try {
+      if (this.isSimulationMode) {
+        return { success: true, message: `Battery ${batteryId} test started (simulation)` };
+      } else {
+        // Gerçek donanım komutu gönder
+        const success = this.sendSTM32Command(2, batteryId, 2, testType);
+        return { success, message: success ? `Battery ${batteryId} test started` : 'Command failed' };
+      }
+    } catch (error) {
+      return { success: false, message: 'Error starting battery test' };
+    }
+  }
+
+  async getACInputs(): Promise<ACPhase[]> {
+    if (this.isSimulationMode) {
+      return this.simulateACInputs();
+    } else {
+      return this.getRealACInputsData();
+    }
+  }
+
+  async getDCOutputs(): Promise<DCCircuit[]> {
+    if (this.isSimulationMode) {
+      return this.simulateDCOutputs();
+    } else {
+      return this.getRealDCOutputsData();
+    }
+  }
+
+  async setDCCircuitState(circuitId: number, enabled: boolean): Promise<{ success: boolean; message: string }> {
+    try {
+      if (this.isSimulationMode) {
+        return { success: true, message: `DC circuit ${circuitId} ${enabled ? 'enabled' : 'disabled'} (simulation)` };
+      } else {
+        // Gerçek donanım komutu gönder
+        const success = this.sendSTM32Command(3, circuitId, enabled ? 2 : 3, 0);
+        return { success, message: success ? `DC circuit ${circuitId} ${enabled ? 'enabled' : 'disabled'}` : 'Command failed' };
+      }
+    } catch (error) {
+      return { success: false, message: 'Error setting DC circuit state' };
+    }
+  }
+
+  async getActiveAlarms(): Promise<AlarmData[]> {
+    if (this.isSimulationMode) {
+      return this.simulateActiveAlarms();
+    } else {
+      return this.getRealActiveAlarmsData();
+    }
+  }
+
+  async acknowledgeAlarm(alarmId: number): Promise<{ success: boolean; message: string }> {
+    try {
+      if (this.isSimulationMode) {
+        return { success: true, message: `Alarm ${alarmId} acknowledged (simulation)` };
+      } else {
+        // Gerçek donanım komutu gönder
+        const success = this.sendSTM32Command(4, alarmId, 1, 0);
+        return { success, message: success ? `Alarm ${alarmId} acknowledged` : 'Command failed' };
+      }
+    } catch (error) {
+      return { success: false, message: 'Error acknowledging alarm' };
+    }
+  }
+
+  async getSystemStatus(): Promise<SystemStatus> {
+    if (this.isSimulationMode) {
+      return this.simulateSystemStatus();
+    } else {
+      return this.getRealSystemStatusData();
+    }
+  }
+
+  async setOperationMode(mode: number): Promise<{ success: boolean; message: string }> {
+    try {
+      if (this.isSimulationMode) {
+        return { success: true, message: `Operation mode set to ${mode} (simulation)` };
+      } else {
+        // Gerçek donanım komutu gönder
+        const success = this.sendSTM32Command(5, 0, 1, mode);
+        return { success, message: success ? `Operation mode set to ${mode}` : 'Command failed' };
+      }
+    } catch (error) {
+      return { success: false, message: 'Error setting operation mode' };
+    }
+  }
+
   cleanup(): void {
     if (this.hwProcess) {
       this.hwProcess.kill();
       this.hwProcess = null;
     }
+    
+    if (this.stm32Bridge) {
+      this.stm32Bridge.disconnect();
+      this.stm32Bridge = null;
+    }
+    
     this.isInitialized = false;
   }
 }

@@ -18,7 +18,7 @@ externalPort = 80
 runButton = "Project"
 
 [[workflows.workflow]]
-name = "Project"
+name = "Project"    
 mode = "parallel"
 author = "agent"
 

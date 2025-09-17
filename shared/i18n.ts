@@ -13,6 +13,7 @@ export interface Translation {
   query: string;
   systemSettings: string;
   maintenance: string;
+  alarms: string;
   
   // Sidebar Menu Items
   controlPanel: string;
@@ -46,6 +47,8 @@ export interface Translation {
   batteryStatus: string;
   batteryTestRecords: string;
   totalBatteryCurrent: string;
+  rectifiers: string;
+  solars: string;
   
   // Common Terms
   status: string;
@@ -163,6 +166,12 @@ export interface Translation {
   acknowledgedStatus: string;
   acknowledgeButton: string;
   detailsButton: string;
+  
+  // Settings/Notifications
+  settingsSavedTitle: string;
+  settingsSavedDescription: string;
+  settingsSaveErrorTitle: string;
+  settingsSaveErrorDescription: string;
   
   // GPS and Location
   gpsCoordinates: string;
@@ -331,6 +340,7 @@ export interface Translation {
   avgPower: string;
   peakPower: string;
   batteryCycles: string;
+  fanSpeed: string;
 }
 
 export const translations: Record<Language, Translation> = {
@@ -346,6 +356,7 @@ export const translations: Record<Language, Translation> = {
     query: "Sorgu",
     systemSettings: "Sistem Ayarları",
     maintenance: "Bakım",
+    alarms: "Alarmlar",
     
     // Sidebar Menu Items
     controlPanel: "Kontrol Paneli",
@@ -379,13 +390,15 @@ export const translations: Record<Language, Translation> = {
     batteryStatus: "Pil Durumu",
     batteryTestRecords: "Pil Test Kayıtları",
     totalBatteryCurrent: "Toplam Pil Akımı",
+    rectifiers: "Doğrultucular",
+    solars: "Solarlar",
     
     // Common Terms
     status: "Durum",
     active: "Aktif",
     inactive: "Pasif",
     normal: "Normal",
-    critical: "Kritik",
+    critical: "Uyarı",
     error: "Hata",
     connected: "Bağlı",
     disconnected: "Bağlantı Kesildi",
@@ -486,7 +499,7 @@ export const translations: Record<Language, Translation> = {
     
     // Alarm Terms
     activeSystemAlarms: "Sistemdeki aktif alarm ve uyarılar",
-    criticalAlarm: "Kritik",
+    criticalAlarm: "Uyarı",
     warningAlarm: "Uyarı",
     infoAlarm: "Bilgi",
     dcOutputVoltageHigh: "DC Çıkış Voltajı Yüksek",
@@ -496,6 +509,12 @@ export const translations: Record<Language, Translation> = {
     acknowledgedStatus: "Onaylandı",
     acknowledgeButton: "Onayla",
     detailsButton: "Detay",
+
+    // Settings/Notifications
+    settingsSavedTitle: "Ayarlar kaydedildi",
+    settingsSavedDescription: "Değişiklikler başarıyla kaydedildi.",
+    settingsSaveErrorTitle: "Hata",
+    settingsSaveErrorDescription: "Ayarlar kaydedilemedi",
     
     // GPS and Location
     gpsCoordinates: "GPS Koordinatları",
@@ -662,7 +681,8 @@ export const translations: Record<Language, Translation> = {
     energyEfficiency: "Enerji Verimliliği",
     avgPower: "Ortalama Güç",
     peakPower: "Pik Güç",
-    batteryCycles: "Şarj/Deşarj Döngüsü"
+    batteryCycles: "Şarj/Deşarj Döngüsü",
+    fanSpeed: "Fan Hızı"
   },
   
   en: {
@@ -677,6 +697,7 @@ export const translations: Record<Language, Translation> = {
     query: "Query",
     systemSettings: "System Settings",
     maintenance: "Maintenance",
+    alarms: "Alarms",
     
     // Sidebar Menu Items
     controlPanel: "Control Panel",
@@ -710,13 +731,15 @@ export const translations: Record<Language, Translation> = {
     batteryStatus: "Battery Status",
     batteryTestRecords: "Battery Test Records",
     totalBatteryCurrent: "Total Battery Current",
+    rectifiers: "Rectifiers",
+    solars: "Solars",
     
     // Common Terms
     status: "Status",
     active: "Active",
     inactive: "Inactive",
     normal: "Normal",
-    critical: "Critical",
+    critical: "Warning",
     error: "Error",
     connected: "Connected",
     disconnected: "Disconnected",
@@ -817,7 +840,7 @@ export const translations: Record<Language, Translation> = {
     
     // Alarm Terms
     activeSystemAlarms: "Active system alarms and warnings",
-    criticalAlarm: "Critical",
+    criticalAlarm: "Warning",
     warningAlarm: "Warning",
     infoAlarm: "Info",
     dcOutputVoltageHigh: "DC Output Voltage High",
@@ -827,6 +850,12 @@ export const translations: Record<Language, Translation> = {
     acknowledgedStatus: "Acknowledged",
     acknowledgeButton: "Acknowledge",
     detailsButton: "Details",
+
+    // Settings/Notifications
+    settingsSavedTitle: "Settings saved",
+    settingsSavedDescription: "Changes have been saved successfully.",
+    settingsSaveErrorTitle: "Error",
+    settingsSaveErrorDescription: "Failed to save settings",
     
     // GPS and Location
     gpsCoordinates: "GPS Coordinates",
@@ -993,7 +1022,8 @@ export const translations: Record<Language, Translation> = {
     energyEfficiency: "Energy Efficiency",
     avgPower: "Average Power",
     peakPower: "Peak Power",
-    batteryCycles: "Charge/Discharge Cycles"
+    batteryCycles: "Charge/Discharge Cycles",
+    fanSpeed: "Fan Speed"
   }
 };
 

@@ -1,0 +1,184 @@
+# STM32F407 Makefile for NetmonDashboard v3
+# Requires ARM GCC Toolchain
+
+# Project configuration
+PROJECT_NAME = netmon_dashboard_stm32
+MCU = STM32F407VGT6
+CPU = -mcpu=cortex-m4
+FPU = -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+PREFIX = arm-none-eabi-
+
+# Toolchain
+CC = $(PREFIX)gcc
+AS = $(PREFIX)gcc -x assembler-with-cpp
+CP = $(PREFIX)objcopy
+SZ = $(PREFIX)size
+HEX = $(CP) -O ihex
+BIN = $(CP) -O binary -S
+
+# Directories
+BUILD_DIR = build
+STM32CUBE_DIR = ../STM32CubeF4
+HAL_DIR = $(STM32CUBE_DIR)/Drivers/STM32F4xx_HAL_Driver
+CMSIS_DIR = $(STM32CUBE_DIR)/Drivers/CMSIS
+DEVICE_DIR = $(CMSIS_DIR)/Device/ST/STM32F4xx
+
+# Include directories
+C_INCLUDES = \
+-I. \
+-I$(HAL_DIR)/Inc \
+-I$(CMSIS_DIR)/Include \
+-I$(DEVICE_DIR)/Include \
+-I$(STM32CUBE_DIR)/Drivers/CMSIS/Include \
+-I$(STM32CUBE_DIR)/Drivers/CMSIS/Device/ST/STM32F4xx/Include
+
+# Source files
+C_SOURCES = \
+main.c \
+stm32f4xx_it.c \
+stm32f4xx_hal_msp.c \
+system_stm32f4xx.c \
+stm32_interface.c \
+sensor_library.c \
+safety_system.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_adc.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_adc_ex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_cortex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_dma.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_dma_ex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_exti.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_flash.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_flash_ex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_flash_ramfunc.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_gpio.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_iwdg.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_pwr.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_pwr_ex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_rcc.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_rcc_ex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_tim.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_tim_ex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_uart.c \
+$(HAL_DIR)/Src/stm32f4xx_hal_uart_ex.c \
+$(HAL_DIR)/Src/stm32f4xx_hal.c
+
+# Assembly source files
+ASM_SOURCES = \
+startup_stm32f407xx.s
+
+# Linker script
+LDSCRIPT = STM32F407VGTx_FLASH.ld
+
+# C defines
+C_DEFS = \
+-DUSE_HAL_DRIVER \
+-DSTM32F407xx \
+-DHSE_VALUE=8000000 \
+-DHSE_STARTUP_TIMEOUT=100 \
+-DHSI_VALUE=16000000 \
+-DLSI_VALUE=32000 \
+-DLSE_VALUE=32768 \
+-DLSE_STARTUP_TIMEOUT=5000 \
+-DVDD_VALUE=3300 \
+-DTICK_INT_PRIORITY=0 \
+-DUSE_RTOS=0 \
+-DPREFETCH_ENABLE=1 \
+-DINSTRUCTION_CACHE_ENABLE=1 \
+-DDATA_CACHE_ENABLE=1
+
+# C flags
+CFLAGS = $(MCU) $(FPU) $(CPU) $(C_DEFS) $(C_INCLUDES) -Wall -Wextra -std=c99 -O2 -g3 -ffunction-sections -fdata-sections
+
+# AS flags
+ASFLAGS = $(MCU) $(FPU) $(CPU) $(AS_DEFS) $(AS_INCLUDES) -Wall -Wextra -std=c99 -O2 -g3 -ffunction-sections -fdata-sections
+
+# LD flags
+LDFLAGS = $(MCU) $(FPU) $(CPU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(PROJECT_NAME).map,--cref -Wl,--gc-sections
+
+# Default action: build all
+all: $(BUILD_DIR)/$(PROJECT_NAME).elf $(BUILD_DIR)/$(PROJECT_NAME).hex $(BUILD_DIR)/$(PROJECT_NAME).bin
+
+# Object files
+OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
+vpath %.c $(sort $(dir $(C_SOURCES)))
+
+# Assembly object files
+OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
+vpath %.s $(sort $(dir $(ASM_SOURCES)))
+
+# Build directory
+$(BUILD_DIR):
+	mkdir -p $@
+
+# Compile C files
+$(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR)
+	$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
+
+# Compile assembly files
+$(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
+	$(AS) -c $(ASFLAGS) $< -o $@
+
+# Link
+$(BUILD_DIR)/$(PROJECT_NAME).elf: $(OBJECTS) Makefile
+	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
+	$(SZ) $@
+
+# Generate hex file
+$(BUILD_DIR)/$(PROJECT_NAME).hex: $(BUILD_DIR)/$(PROJECT_NAME).elf
+	$(HEX) $< $@
+
+# Generate binary file
+$(BUILD_DIR)/$(PROJECT_NAME).bin: $(BUILD_DIR)/$(PROJECT_NAME).elf
+	$(BIN) $< $@
+
+# Clean
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Flash using st-flash
+flash: $(BUILD_DIR)/$(PROJECT_NAME).bin
+	st-flash write $< 0x8000000
+
+# Flash with verification
+flash-verify: $(BUILD_DIR)/$(PROJECT_NAME).bin
+	st-flash write $< 0x8000000
+	st-flash verify $< 0x8000000
+
+# Erase flash
+erase:
+	st-flash erase
+
+# Reset device
+reset:
+	st-flash reset
+
+# Debug using OpenOCD
+debug: $(BUILD_DIR)/$(PROJECT_NAME).elf
+	openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c "program $< verify reset exit"
+
+# Monitor using OpenOCD
+monitor:
+	openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c "telnet_port 4444" -c "gdb_port 3333" -c "init"
+
+# Show size information
+size: $(BUILD_DIR)/$(PROJECT_NAME).elf
+	$(SZ) $<
+
+# Help
+help:
+	@echo "Available targets:"
+	@echo "  all          - Build all files"
+	@echo "  clean        - Remove build files"
+	@echo "  flash        - Flash binary to STM32"
+	@echo "  flash-verify - Flash with verification"
+	@echo "  erase        - Erase flash memory"
+	@echo "  reset        - Reset device"
+	@echo "  debug        - Debug using OpenOCD"
+	@echo "  monitor      - Start OpenOCD monitor"
+	@echo "  size         - Show size information"
+	@echo "  help         - Show this help"
+
+# Dependencies
+-include $(wildcard $(BUILD_DIR)/*.d)
+
+.PHONY: all clean flash flash-verify erase reset debug monitor size help

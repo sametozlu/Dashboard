@@ -1,0 +1,82 @@
+# Windows Makefile for STM32 Simulator
+# Requires MinGW or similar C compiler
+
+CC = gcc
+CFLAGS = -Wall -Wextra -std=c99 -O2
+LIBS = -lws2_32
+
+# Target executables
+TARGETS = stm32_simulator.exe hardware_server.exe test_stm32.exe
+
+# Source files
+STM32_SIM_SOURCES = stm32_simulator.c
+HARDWARE_SERVER_SOURCES = hardware_server.c
+TEST_STM32_SOURCES = test_stm32.c stm32_interface.c
+
+# Object files
+STM32_SIM_OBJS = $(STM32_SIM_SOURCES:.c=.o)
+HARDWARE_SERVER_OBJS = $(HARDWARE_SERVER_SOURCES:.c=.o)
+TEST_STM32_OBJS = $(TEST_STM32_SOURCES:.c=.o)
+
+# Default target
+all: $(TARGETS)
+
+# STM32 Simulator
+stm32_simulator.exe: $(STM32_SIM_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+# Hardware Server
+hardware_server.exe: $(HARDWARE_SERVER_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+# Test STM32
+test_stm32.exe: $(TEST_STM32_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+# Compile source files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Clean build files
+clean:
+	del /Q *.o *.exe 2>nul || echo Cleaned
+
+# Install dependencies (if using chocolatey)
+install-deps:
+	@echo Installing dependencies...
+	@echo Please install MinGW-w64 or similar C compiler
+	@echo You can download from: https://www.mingw-w64.org/
+
+# Run STM32 simulator
+run-simulator: stm32_simulator.exe
+	./stm32_simulator.exe
+
+# Run hardware server
+run-server: hardware_server.exe
+	./hardware_server.exe
+
+# Run test program
+run-test: test_stm32.exe
+	./test_stm32.exe
+
+# Build and run STM32 simulator
+build-and-run: stm32_simulator.exe
+	@echo Building and running STM32 simulator...
+	./stm32_simulator.exe
+
+# Help
+help:
+	@echo Available targets:
+	@echo   all              - Build all executables
+	@echo   stm32_simulator.exe - Build STM32 simulator
+	@echo   hardware_server.exe  - Build hardware server
+	@echo   test_stm32.exe   - Build test program
+	@echo   clean            - Remove build files
+	@echo   install-deps     - Show dependency installation info
+	@echo   run-simulator    - Run STM32 simulator
+	@echo   run-server       - Run hardware server
+	@echo   run-test         - Run test program
+	@echo   build-and-run    - Build and run STM32 simulator
+	@echo   help             - Show this help
+
+.PHONY: all clean install-deps run-simulator run-server build-and-run help

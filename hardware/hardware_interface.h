@@ -1,4 +1,4 @@
-#ifndef HARDWARE_INTERFACE_H
+#define HARDWARE_INTERFACE_H
 #define HARDWARE_INTERFACE_H
 
 #ifdef __cplusplus

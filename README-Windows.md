@@ -94,8 +94,23 @@ cross-env NODE_ENV=development npx tsx server/index.ts
 ```bash
 npm run dev          # Geliştirme modunda başlat
 npm run build        # Üretim için derle
-npm run start        # Üretim modunda başlat
+npm run start:prod   # Üretim modunda başlat
 npm run check        # TypeScript kontrolü
+```
+## NGINX Reverse Proxy (Örnek)
+```
+server {
+  listen 80;
+  server_name example.com;
+
+  location / {
+    proxy_pass http://127.0.0.1:5000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
 ```
 
 ### Windows Özel Komutları:

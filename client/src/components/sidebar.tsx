@@ -3,16 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useLanguage } from "@/hooks/use-language";
 import { 
-  ChevronRight, 
   Gauge, 
   LineChart, 
   MapPin, 
   Building, 
   Cpu, 
   Battery,
-  Home,
-  BarChart2,
-  Settings
+
 } from "lucide-react";
 import type { MenuSection, ContentType } from "@/pages/dashboard";
 

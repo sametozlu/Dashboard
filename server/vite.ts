@@ -20,10 +20,17 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  // Serve repo-level assets for the client during development
+  app.use("/assets", express.static(path.resolve(import.meta.dirname, "..", "attached_assets")));
+  // Simple logo alias
+  app.get("/logo.png", (_req, res) => {
+    res.sendFile(path.resolve(import.meta.dirname, "..", "attached_assets", "Kwc_Netmon_Logo_Siyah_1749623422136.png"));
+  });
+
   const serverOptions = {
-    middlewareMode: true,
+    middlewareMode: true as const,
     hmr: { server },
-    allowedHosts: true,
+    allowedHosts: true as const,
   };
 
   const vite = await createViteServer({
@@ -77,6 +84,13 @@ export function serveStatic(app: Express) {
   }
 
   app.use(express.static(distPath));
+
+  // Also expose raw assets from repo in production under /assets
+  app.use("/assets", express.static(path.resolve(import.meta.dirname, "..", "attached_assets")));
+  // Simple logo alias in production
+  app.get("/logo.png", (_req, res) => {
+    res.sendFile(path.resolve(import.meta.dirname, "..", "attached_assets", "Kwc_Netmon_Logo_Siyah_1749623422136.png"));
+  });
 
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {

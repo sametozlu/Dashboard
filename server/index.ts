@@ -1,12 +1,62 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import { sanitizeInput } from "./middleware/validation";
 import cookieParser from "cookie-parser";
+import session from "express-session";
+import connectRedis from "connect-redis";
+import { createClient as createRedisClient } from "redis";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+// Use a relaxed CSP only in development for Vite HMR; strict defaults in production
+if (app.get("env") === "development") {
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+          fontSrc: ["'self'", "https:", "data:"],
+          imgSrc: ["'self'", "data:", "https:"],
+          connectSrc: ["'self'", "ws:", "wss:"],
+          frameSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          upgradeInsecureRequests: [],
+        },
+      },
+    })
+  );
+} else {
+  app.use(helmet());
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+// Redis-backed session (optional; falls back to MemoryStore if Redis not available)
+try {
+  const useRedis = !!process.env.REDIS_URL;
+  if (useRedis) {
+    const RedisStore = connectRedis(session);
+    const redisClient = createRedisClient({ url: process.env.REDIS_URL });
+    redisClient.connect().catch(() => {});
+    app.use(session({
+      store: new (RedisStore as any)({ client: redisClient }),
+      secret: process.env.SESSION_SECRET || "dev-secret",
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        secure: app.get("env") === "production",
+        sameSite: "lax",
+        maxAge: 24 * 60 * 60 * 1000
+      }
+    }));
+  }
+} catch {}
+app.use(sanitizeInput());
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -39,6 +89,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  if (!process.env.SESSION_SECRET && app.get("env") === "production") {
+    throw new Error("SESSION_SECRET is required in production");
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -46,7 +100,7 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    // do not rethrow, avoid crashing the process
   });
 
   // importantly only setup vite in development and after
@@ -58,12 +112,10 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
-  server.listen(5000, "0.0.0.0", () => {
-    log("serving on port 5000");
+  // Serve both API and client on the same port (defaults to 5000)
+  const port = Number(process.env.PORT || 5000);
+  server.listen(port, "0.0.0.0", () => {
+    log(`serving on port ${port}`);
   });
 
 })();

@@ -8,14 +8,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/hooks/use-language";
 import { LanguageSelector } from "@/components/language-selector";
 import { loginSchema, type LoginRequest } from "@shared/schema";
-import netmonLogo from "@assets/Kwc_Netmon_Logo_Siyah_1749623422136.png";
+
 
 export default function Login() {
   const { login, isLoggingIn } = useAuth();
   const { t } = useLanguage();
   
   const form = useForm<LoginRequest>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(loginSchema as any),
     defaultValues: {
       username: "",
       password: "",
@@ -27,17 +27,21 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-netmon-blue to-blue-800 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-white flex items-center justify-center p-4">
       {/* Language selector in top right corner */}
       <div className="absolute top-4 right-4">
-        <LanguageSelector variant="ghost" showText={false} />
+        <LanguageSelector showText={false} />
       </div>
       
       <Card className="w-full max-w-md shadow-2xl">
         <CardContent className="p-8">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-6">
-              <img src={netmonLogo} alt="Netmon Logo" className="h-16 w-auto" />
+              <img
+                src="/assets/Kwc_Netmon_Logo_Siyah_1749623422136.png"
+                alt="Netmon Logo"
+                className="h-16 w-auto rounded bg-blue-50 p-2"
+              />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">{t.systemLogin}</h1>
             <p className="text-gray-600">{t.welcomeMessage}</p>

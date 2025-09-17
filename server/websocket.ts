@@ -4,11 +4,19 @@ import { hardwareBridge } from './hardware-bridge';
 import { storage } from './storage';
 
 export function setupWebSocket(httpServer: Server) {
+  const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
+  const allowedOrigins = allowedOriginsEnv
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
   const io = new SocketIOServer(httpServer, {
     cors: {
-      origin: process.env.NODE_ENV === 'development' ? 
-        ['http://localhost:5000', 'http://127.0.0.1:5000'] : 
-        false,
+      origin: allowedOrigins.length > 0
+        ? allowedOrigins
+        : (process.env.NODE_ENV === 'development'
+          ? ['http://localhost:3000', 'http://127.0.0.1:3000']
+          : false),
       credentials: true
     }
   });
@@ -81,7 +89,7 @@ export function setupWebSocket(httpServer: Server) {
         
         switch (data.action) {
           case 'setPowerModuleState':
-            result = await hardwareBridge.setBowerModuleState(data.moduleId, data.enabled);
+            result = await hardwareBridge.setPowerModuleState(data.moduleId, data.enabled);
             break;
           case 'setDCCircuitState':
             result = await hardwareBridge.setDCCircuitState(data.circuitId, data.enabled);
@@ -124,12 +132,36 @@ export function setupWebSocket(httpServer: Server) {
 
   // WebSocket sunucusu kurulduktan sonra, donanım verisini frontend'e aktar
   hardwareBridge.on('hardwareData', (data: string) => {
-    // Donanımdan gelen ham veri, frontend'e iletilir
-    // Burada istersen parse edip belirli bir event ile de gönderebilirsin
-    io.emit('hardware:raw', {
-      data,
-      timestamp: Date.now()
-    });
+    try {
+      // C programından gelen JSON veriyi parse et
+      const parsedData = JSON.parse(data);
+      
+      if (parsedData.type === 'system_status') {
+        // Sistem durumu ve rectifier verilerini broadcast et
+        io.to('hardware:rectifiers').emit('hardware:rectifiers', {
+          data: parsedData.rectifiers,
+          timestamp: Date.now()
+        });
+        
+        io.to('hardware:systemStatus').emit('hardware:systemStatus', {
+          data: parsedData.data,
+          timestamp: Date.now()
+        });
+        
+        // Genel hardware verisi olarak da gönder
+        io.emit('hardware:raw', {
+          data: parsedData,
+          timestamp: Date.now()
+        });
+      }
+    } catch (error) {
+      console.error('Error parsing hardware data:', error);
+      // Parse edilemezse ham veri olarak gönder
+      io.emit('hardware:raw', {
+        data,
+        timestamp: Date.now()
+      });
+    }
   });
 
   // Set up periodic data broadcasting
@@ -160,6 +192,10 @@ async function sendInitialHardwareData(socket: any, dataType: string) {
         break;
       case 'systemStatus':
         data = await hardwareBridge.getSystemStatus();
+        break;
+      case 'rectifiers':
+        // Rectifier verisi için özel case
+        data = await hardwareBridge.getPowerModules(); // Geçici olarak power modules kullan
         break;
       default:
         return;

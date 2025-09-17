@@ -1,4 +1,14 @@
 import { users, sessions, type User, type InsertUser, type Session } from "@shared/schema";
+import bcrypt from "bcryptjs";
+
+export interface ConfigData {
+  rectifiers: any;
+  solars: any;
+  batteryGroup: any;
+  acInput: any;
+  dcOutput: any;
+  environment: any;
+}
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -8,20 +18,32 @@ export interface IStorage {
   getSession(sessionId: string): Promise<Session | undefined>;
   deleteSession(sessionId: string): Promise<void>;
   deleteExpiredSessions(): Promise<void>;
+  getConfig(): Promise<ConfigData>;
+  setConfig(config: ConfigData): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private sessions: Map<string, Session>;
   private currentUserId: number;
+  private config: ConfigData;
 
   constructor() {
     this.users = new Map();
     this.sessions = new Map();
     this.currentUserId = 1;
     
-    // Create default netmon user
-    this.createUser({ username: "netmon", password: "netmon" });
+    // Create default netmon user with hashed password
+    const defaultPasswordHash = bcrypt.hashSync("netmon", 10);
+    this.createUser({ username: "netmon", password: defaultPasswordHash });
+    this.config = {
+      rectifiers: {},
+      solars: {},
+      batteryGroup: {},
+      acInput: {},
+      dcOutput: {},
+      environment: {}
+    };
   }
 
   async getUser(id: number): Promise<User | undefined> {
@@ -37,8 +59,9 @@ export class MemStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.currentUserId++;
     const user: User = { 
-      ...insertUser, 
       id,
+      username: insertUser.username,
+      password: insertUser.password,
       createdAt: new Date()
     };
     this.users.set(id, user);
@@ -79,6 +102,14 @@ export class MemStorage implements IStorage {
     expiredSessions.forEach(sessionId => {
       this.sessions.delete(sessionId);
     });
+  }
+
+  async getConfig(): Promise<ConfigData> {
+    return this.config;
+  }
+
+  async setConfig(config: ConfigData): Promise<void> {
+    this.config = config;
   }
 }
 
